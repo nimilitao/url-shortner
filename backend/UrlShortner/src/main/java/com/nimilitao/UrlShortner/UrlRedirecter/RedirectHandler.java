@@ -5,7 +5,9 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.cdimascio.dotenv.Dotenv;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 
 import java.io.InputStream;
@@ -14,7 +16,7 @@ import java.util.Map;
 
 public class RedirectHandler implements RequestHandler<Map<String, Object>, Map<String, Object >> {
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final S3Client s3Client = S3Client.builder().build();
+    private final S3Client s3Client = S3Client.builder().region(Region.of("us-east-2")).build();
     private final Dotenv dotenv = Dotenv.load();
     private final String s3BucketName = dotenv.get("S3_BUCKET_NAME");
 
@@ -30,13 +32,15 @@ public class RedirectHandler implements RequestHandler<Map<String, Object>, Map<
 
         GetObjectRequest request = GetObjectRequest.builder()
                 .bucket(s3BucketName)
-                .key(shortUrlCode + ".json") // s3 object name + format
+                .key(shortUrlCode + ".json")
                 .build();
 
         InputStream s3ObjectStream;
 
         try {
+            System.out.println(request);
             s3ObjectStream = s3Client.getObject(request);
+            System.out.println(s3ObjectStream);
         } catch (Exception exception) {
             throw new RuntimeException("Error fetching URL data from S3: " + exception.getMessage());
         }
@@ -52,8 +56,17 @@ public class RedirectHandler implements RequestHandler<Map<String, Object>, Map<
         long currentTimeInSeconds = System.currentTimeMillis() / 1000;
 
         Map<String, Object> response = new HashMap<>();
-        if(urlData.getExpirationTime() < currentTimeInSeconds)
+
+        String s3FileName = shortUrlCode + ".json";
+
+        if(currentTimeInSeconds > urlData.getExpirationTime())
         {
+            try {
+                deleteFileFromS3(s3FileName);
+            } catch (Exception exception) {
+                throw new RuntimeException("Error deleting URL data from S3: " + exception.getMessage());
+            }
+
             response.put("statusCode", 410);
             response.put("body", "This URL has expired!");
         }
@@ -65,5 +78,14 @@ public class RedirectHandler implements RequestHandler<Map<String, Object>, Map<
         response.put("statusCode", 302);
 
         return response;
+    }
+
+    private void deleteFileFromS3(String fileName) {
+        DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
+                .bucket(s3BucketName)
+                .key(fileName)
+                .build();
+
+        s3Client.deleteObject(deleteRequest);
     }
 }
