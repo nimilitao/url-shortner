@@ -23,7 +23,7 @@ public class RedirectHandler implements RequestHandler<Map<String, Object>, Map<
     @Override
     public Map<String, Object> handleRequest(Map<String, Object> input, Context context) {
         String pathParameters = input.get("rawPath").toString();
-        String shortUrlCode = pathParameters.replace("/","");
+        String shortUrlCode = pathParameters.substring(pathParameters.lastIndexOf("/") + 1);
 
         if(shortUrlCode == null || shortUrlCode.isEmpty())
         {
